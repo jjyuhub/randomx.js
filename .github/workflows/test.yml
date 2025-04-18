@@ -16,18 +16,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4 # Checks out your repository code
 
-      - name: Install Homebrew dependencies
+      - name: Install Dependencies (Homebrew and Bun)
         run: |
-          echo "Installing dependencies via Homebrew..."
-          brew install wabt binaryen tcc bun node
-          echo "Dependency installation complete."
+          echo "Installing Homebrew dependencies (wabt, binaryen, tcc, node)..."
+          brew install wabt binaryen tcc node
+          echo "Homebrew dependencies installed."
+
+          echo "Installing Bun via official script..."
+          curl -fsSL https://bun.sh/install | bash
+          # Add bun to the PATH for subsequent steps
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+          echo "Bun installation complete."
+
           echo "Verifying installations:"
           brew list
           which wasm-objdump # from wabt
           which wasm-opt    # from binaryen
           which tcc
-          which bun
           which node
+          which bun # Verify bun is found
+          bun --version # Verify bun runs
 
       - name: Install Node.js dependencies
         run: |
