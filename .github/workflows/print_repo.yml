@@ -1,73 +1,85 @@
-name: Print Repository Structure
+name: Ubuntu Build and Test
 
 on:
-  push:
+  push: # Run on pushes to any branch
     branches: [ main ]
-  workflow_dispatch:
+  pull_request: # Run on pull requests targeting the main branch
+    branches: [ main ]
+  workflow_dispatch: # Allow manual triggering
 
 jobs:
-  print-repo:
+  test-ubuntu:
+    name: Test on Ubuntu
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate repository report
+      - name: Install Dependencies (APT, Homebrew, Bun)
         run: |
-          python3 - <<'EOF'
-          import os
+          echo "Updating APT and installing core build tools..."
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang lld cmake curl wget nodejs npm tcc
 
-          def build_tree(root, prefix=""):
-              tree_str = ""
-              try:
-                  entries = sorted(os.listdir(root))
-              except Exception as e:
-                  return f"Error listing directory: {e}\n"
-              # Exclude the .git directory
-              entries = [e for e in entries if e != '.git']
-              for idx, entry in enumerate(entries):
-                  full_path = os.path.join(root, entry)
-                  is_last = (idx == len(entries) - 1)
-                  branch = "└── " if is_last else "├── "
-                  tree_str += prefix + branch + entry + "\n"
-                  if os.path.isdir(full_path):
-                      extension = "    " if is_last else "│   "
-                      tree_str += build_tree(full_path, prefix + extension)
-              return tree_str
+          echo "Installing wabt and binaryen (WebAssembly tools)..."
+          wget https://github.com/WebAssembly/wabt/releases/download/1.0.36/wabt-1.0.36-ubuntu.tar.gz
+          tar -xzf wabt-1.0.36-ubuntu.tar.gz
+          sudo cp wabt-1.0.36/bin/* /usr/local/bin/
 
-          # Build the file tree
-          file_tree = build_tree(".")
+          wget https://github.com/WebAssembly/binaryen/releases/download/version_122/binaryen-version_122-x86_64-linux.tar.gz
+          tar -xzf binaryen-version_122-x86_64-linux.tar.gz
+          sudo cp binaryen-version_122/bin/* /usr/local/bin/
 
-          # Build the report content
-          output = ""
-          output += "## Repository File Tree\n\n"
-          output += "```\n" + file_tree + "```\n\n"
-          output += "## File Contents\n\n"
+          echo "Installing Bun via official script..."
+          curl -fsSL https://bun.sh/install | bash
+          export BUN_INSTALL="$HOME/.bun"
+          export PATH="$BUN_INSTALL/bin:$PATH"
+          echo "$BUN_INSTALL/bin" >> $GITHUB_PATH
 
-          for root, dirs, files in os.walk("."):
-              # Exclude the .git directory from traversal
-              if ".git" in dirs:
-                  dirs.remove(".git")
-              for file in sorted(files):
-                  file_path = os.path.join(root, file)
-                  rel_path = os.path.relpath(file_path, ".")
-                  output += "---\n\n"
-                  output += f"**{rel_path}**\n\n"
-                  output += "```\n"
-                  try:
-                      with open(file_path, encoding="utf-8") as f:
-                          output += f.read() + "\n"
-                  except Exception as e:
-                      output += f"Error reading file: {e}\n"
-                  output += "```\n\n"
+          echo "Verifying installations..."
+          which wasm-objdump && wasm-objdump --version
+          which wasm-opt && wasm-opt --version
+          which clang && clang --version
+          which node && node --version
+          which bun && bun --version
+          which tcc && tcc -v
+          nproc
 
-          # Write the output to a file
-          with open("repo_report.txt", "w", encoding="utf-8") as report_file:
-              report_file.write(output)
-          EOF
+      - name: Install Node.js dependencies
+        run: |
+          echo "Installing project Node.js dependencies using bun..."
+          bun i --verbose
+          echo "Dependencies installed."
 
-      - name: Upload report artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: repo-report
-          path: repo_report.txt
+      - name: Build project
+        run: |
+          echo "Starting project build..."
+          bun scripts/build.ts
+          echo "Build complete."
+
+      - name: Run RandomX example (Single Thread)
+        run: |
+          echo "Running RandomX single-threaded example..."
+          node examples/randomx_single.js
+          echo "Finished."
+
+      - name: Run RandomX example (Multi Thread)
+        run: |
+          echo "Running RandomX multi-threaded example..."
+          node examples/randomx_threaded.js
+          echo "Finished."
+
+      # Optional legacy/main test if needed
+      # - name: Run RandomX example (Main)
+      #   run: |
+      #     node examples/randomx.js
+
+      - name: Run SuperScalarHash example
+        run: |
+          echo "Running SuperScalarHash example..."
+          node examples/superscalarhash.js
+          echo "Finished."
+
+      - name: Test summary
+        run: echo "✅ All Ubuntu tests completed successfully."
