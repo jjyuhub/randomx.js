@@ -18,8 +18,9 @@ jobs:
 
       - name: Install Dependencies (Homebrew and Bun)
         run: |
-          echo "Installing Homebrew dependencies (wabt, binaryen, tcc, node)..."
-          brew install wabt binaryen tcc node
+          echo "Installing Homebrew dependencies (wabt, binaryen, node)..."
+          # tcc is omitted due to incompatibility on newer macOS (brew error)
+          brew install wabt binaryen node
           echo "Homebrew dependencies installed."
 
           echo "Installing Bun via official script..."
@@ -32,10 +33,11 @@ jobs:
           brew list
           which wasm-objdump # from wabt
           which wasm-opt    # from binaryen
-          which tcc
+          # Skip which tcc
           which node
           which bun # Verify bun is found
           bun --version # Verify bun runs
+          which clang && clang --version # Verify clang is available
 
       - name: Install Node.js dependencies
         run: |
@@ -64,7 +66,7 @@ jobs:
           node examples/randomx_threaded.js
           echo "RandomX multi-threaded example finished."
 
-      # Note: randomx.js might be redundant if single/multi-threaded examples cover it
+      # Optional: randomx.js might be redundant
       # - name: Run RandomX example (Main)
       #   run: |
       #     echo "Running main RandomX example..."
@@ -76,8 +78,6 @@ jobs:
           echo "Running SuperScalarHash example..."
           node examples/superscalarhash.js
           echo "SuperScalarHash example finished."
-
-      # Add other tests or benchmarks if available, e.g., the web miner test could be more complex to automate in CI.
 
       - name: Test summary
         run: |
