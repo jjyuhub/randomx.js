@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RandomX WASM Benchmark</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 1rem;
+      border-radius: 4px;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>RandomX WASM Benchmark</h1>
+  <button id="run-btn">Run Benchmarks</button>
+  <pre id="output"></pre>
+
+  <script type="module">
+    import init, {
+      run_randomx_single as benchSingle,
+      run_randomx_threaded as benchThreaded
+    } from './randomx.js';
+
+    const out = document.getElementById('output');
+    const btn = document.getElementById('run-btn');
+
+    btn.addEventListener('click', async () => {
+      out.textContent = 'Initializing WebAssembly…\n';
+      await init('./randomx.wasm');
+
+      // Single‑threaded benchmark
+      out.textContent += '\n🔹 Single‑threaded benchmark:\n';
+      const single = benchSingle();
+      const hpsSingle = (single.hashes / (single.ms / 1000)).toFixed(2);
+      out.textContent += `  • Total hashes: ${single.hashes}\n`;
+      out.textContent += `  • Time taken: ${single.ms.toFixed(2)} ms\n`;
+      out.textContent += `  • Hashrate: ${hpsSingle} H/s\n`;
+
+      // Multi‑threaded benchmark (10 intervals)
+      out.textContent += '\n🔹 Multi‑threaded benchmark (10 intervals):\n';
+      let count = 0;
+      const max = 10;
+      const intervalId = setInterval(() => {
+        const t = benchThreaded();
+        const hps = (t.hashes / (t.ms / 1000)).toFixed(2);
+        out.textContent += `  [${count + 1}/${max}] ${hps} H/s over ${t.ms.toFixed(2)} ms\n`;
+        count++;
+        if (count >= max) {
+          clearInterval(intervalId);
+          out.textContent += '\n✅ All done.\n';
+        }
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
