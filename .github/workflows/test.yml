@@ -1,16 +1,20 @@
-name: Ubuntu Build and Test
+name: Build, Test & Deploy to Pages
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   test-ubuntu:
     name: Test on Ubuntu
     runs-on: ubuntu-latest
+    outputs:
+      build-ok: ${{ steps.build.outcome }}
 
     steps:
       - name: Checkout repository
@@ -20,30 +24,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential clang lld cmake curl wget nodejs npm binaryen tcc
-          
-          # Install WABT (1.0.33) from binary release
           wget https://github.com/WebAssembly/wabt/releases/download/1.0.33/wabt-1.0.33-ubuntu.tar.gz
           tar -xzf wabt-1.0.33-ubuntu.tar.gz
           sudo cp wabt-1.0.33/bin/* /usr/local/bin/
-
-          # Install Bun
           curl -fsSL https://bun.sh/install | bash
           export BUN_INSTALL="$HOME/.bun"
           export PATH="$BUN_INSTALL/bin:$PATH"
           echo "$BUN_INSTALL/bin" >> $GITHUB_PATH
 
       - name: Patch Makefile to remove -mrelaxed-simd
-        run: |
-          sed -i 's/-mrelaxed-simd//g' Makefile
+        run: sed -i 's/-mrelaxed-simd//g' Makefile
 
       - name: Patch relaxed SIMD intrinsic in semifloat.c
-        run: |
-          sed -i 's/wasm_f64x2_relaxed_madd(wasm_f64x2_neg(c), b, a)/wasm_f64x2_add(wasm_f64x2_mul(a, b), wasm_f64x2_neg(c))/g' src/jit/stubs/semifloat.c
+        run: sed -i 's/wasm_f64x2_relaxed_madd(wasm_f64x2_neg(c), b, a)/wasm_f64x2_add(wasm_f64x2_mul(a, b), wasm_f64x2_neg(c))/g' src/jit/stubs/semifloat.c
 
       - name: Install Node.js dependencies
         run: bun i --verbose
 
-      - name: Build project (patched)
+      - id: build
+        name: Build project (patched)
         run: |
           echo "Starting build..."
           bun scripts/build.ts
@@ -55,15 +54,9 @@ jobs:
       - name: Patch randomx_threaded.js to stop after 10 intervals
         run: |
           echo "Limiting randomx_threaded.js to 10 hashrate prints..."
-
-          # Insert clean, autoindented JS block after `let start_time = ...`
-          sed -i '/let start_time = performance.now()/a\
-              let intervalCount = 0;\
-              const maxIntervals = 10;' examples/randomx_threaded.js
-
-          # Add exit condition into interval block
-          sed -i '/setInterval(() => {/a\
-              if (++intervalCount >= maxIntervals) process.exit(0);' examples/randomx_threaded.js
+          sed -i '/let start_time = performance.now()/a let intervalCount = 0;' examples/randomx_threaded.js
+          sed -i '/let start_time = performance.now()/a const maxIntervals = 10;' examples/randomx_threaded.js
+          sed -i '/setInterval(() => {/a if (++intervalCount >= maxIntervals) process.exit(0);' examples/randomx_threaded.js
 
       - name: Run RandomX example (Multi Thread)
         run: node examples/randomx_threaded.js
@@ -73,3 +66,36 @@ jobs:
 
       - name: Test Summary
         run: echo "✅ All tests completed successfully with patched relaxed SIMD and controlled threaded output."
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: test-ubuntu
+    if: needs.test-ubuntu.outputs.build-ok == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+
+      - name: Build WASM & JS
+        run: |
+          bun i --verbose
+          bun scripts/build.ts
+
+      - name: Prepare docs directory
+        run: |
+          mkdir -p docs
+          cp build/randomx.wasm docs/
+          cp build/randomx.js docs/
+          cp index.html docs/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs
