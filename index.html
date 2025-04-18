@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>RandomX WASM Benchmark</title>
+  <meta charset="UTF-8" />
+  <title>RandomX JS Benchmark</title>
   <style>
     body {
       font-family: sans-serif;
@@ -12,6 +12,7 @@
       background: #f4f4f4;
       padding: 1rem;
       border-radius: 4px;
+      white-space: pre-wrap;
     }
     button {
       padding: 0.5rem 1rem;
@@ -21,12 +22,12 @@
   </style>
 </head>
 <body>
-  <h1>RandomX WASM Benchmark</h1>
+  <h1>RandomX JS Benchmark</h1>
   <button id="run-btn">Run Benchmarks</button>
   <pre id="output"></pre>
 
   <script type="module">
-    import init, {
+    import {
       run_randomx_single as benchSingle,
       run_randomx_threaded as benchThreaded
     } from './randomx.js';
@@ -35,19 +36,18 @@
     const btn = document.getElementById('run-btn');
 
     btn.addEventListener('click', async () => {
-      out.textContent = 'Initializing WebAssembly…\n';
-      await init('./randomx.wasm');
+      out.textContent = 'Starting single‑threaded benchmark…\n';
 
       // Single‑threaded benchmark
-      out.textContent += '\n🔹 Single‑threaded benchmark:\n';
       const single = benchSingle();
       const hpsSingle = (single.hashes / (single.ms / 1000)).toFixed(2);
+      out.textContent += `\n🔹 Single‑threaded:\n`;
       out.textContent += `  • Total hashes: ${single.hashes}\n`;
       out.textContent += `  • Time taken: ${single.ms.toFixed(2)} ms\n`;
       out.textContent += `  • Hashrate: ${hpsSingle} H/s\n`;
 
       // Multi‑threaded benchmark (10 intervals)
-      out.textContent += '\n🔹 Multi‑threaded benchmark (10 intervals):\n';
+      out.textContent += `\n🔹 Multi‑threaded (10 intervals):\n`;
       let count = 0;
       const max = 10;
       const intervalId = setInterval(() => {
@@ -57,7 +57,7 @@
         count++;
         if (count >= max) {
           clearInterval(intervalId);
-          out.textContent += '\n✅ All done.\n';
+          out.textContent += `\n✅ All benchmarks complete.\n`;
         }
       }, 1000);
     });
