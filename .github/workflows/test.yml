@@ -33,41 +33,31 @@ jobs:
           export PATH="$BUN_INSTALL/bin:$PATH"
           echo "$BUN_INSTALL/bin" >> $GITHUB_PATH
 
-          echo "✅ Verifying key tools..."
-          which wasm-objdump && wasm-objdump --version
-          which wasm-opt && wasm-opt --version
-          which wat2wasm && wat2wasm --version
-          which clang && clang --version
-          which bun && bun --version
-          which node && node --version
-          which tcc && tcc -v
-          nproc
+      - name: Remove -mrelaxed-simd flag (patch Makefile)
+        run: |
+          echo "Patching Makefile to remove -mrelaxed-simd..."
+          sed -i 's/-mrelaxed-simd//g' Makefile
+          echo "Makefile patched."
 
       - name: Install Node.js dependencies
         run: |
           echo "Installing project dependencies using bun..."
           bun i --verbose
 
-      - name: Build project (no relaxed SIMD)
+      - name: Build project (patched)
         run: |
-          echo "Starting project build without -mrelaxed-simd..."
+          echo "Starting build..."
           bun scripts/build.ts
-          echo "Build completed."
+          echo "Build complete."
 
       - name: Run RandomX example (Single Thread)
-        run: |
-          echo "Running single-threaded RandomX test..."
-          node examples/randomx_single.js
+        run: node examples/randomx_single.js
 
       - name: Run RandomX example (Multi Thread)
-        run: |
-          echo "Running multi-threaded RandomX test..."
-          node examples/randomx_threaded.js
+        run: node examples/randomx_threaded.js
 
       - name: Run SuperScalarHash example
-        run: |
-          echo "Running SuperScalarHash test..."
-          node examples/superscalarhash.js
+        run: node examples/superscalarhash.js
 
       - name: Test Summary
-        run: echo "✅ All tests completed successfully on Ubuntu (no relaxed SIMD)."
+        run: echo "✅ All tests passed on Ubuntu (relaxed SIMD stripped by YAML patch)."
