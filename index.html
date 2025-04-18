@@ -30,24 +30,24 @@
     import {
       run_randomx_single as benchSingle,
       run_randomx_threaded as benchThreaded
-    } from './randomx.js';
+    } from './examples/randomx.js';
 
     const out = document.getElementById('output');
     const btn = document.getElementById('run-btn');
 
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       out.textContent = 'Starting single‑threaded benchmark…\n';
 
       // Single‑threaded benchmark
       const single = benchSingle();
       const hpsSingle = (single.hashes / (single.ms / 1000)).toFixed(2);
-      out.textContent += `\n🔹 Single‑threaded:\n`;
+      out.textContent += '\n🔹 Single‑threaded:\n';
       out.textContent += `  • Total hashes: ${single.hashes}\n`;
       out.textContent += `  • Time taken: ${single.ms.toFixed(2)} ms\n`;
       out.textContent += `  • Hashrate: ${hpsSingle} H/s\n`;
 
       // Multi‑threaded benchmark (10 intervals)
-      out.textContent += `\n🔹 Multi‑threaded (10 intervals):\n`;
+      out.textContent += '\n🔹 Multi‑threaded (10 intervals):\n';
       let count = 0;
       const max = 10;
       const intervalId = setInterval(() => {
@@ -57,7 +57,7 @@
         count++;
         if (count >= max) {
           clearInterval(intervalId);
-          out.textContent += `\n✅ All benchmarks complete.\n`;
+          out.textContent += '\n✅ All benchmarks complete.\n';
         }
       }, 1000);
     });
