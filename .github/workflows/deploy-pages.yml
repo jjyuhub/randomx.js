@@ -1,0 +1,69 @@
+name: Deploy Mining Example to GitHub Pages
+
+on:
+  push:
+    branches: [ main ] # Or your default branch
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Bun is used for the build script as per README and package.json
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install Dependencies (Node Modules)
+        run: bun install --frozen-lockfile
+
+      # Build the project - assumes build script generates pkg-randomx.js/dist/web/index.js
+      - name: Build Project Assets
+        run: bun run build # Or: bun scripts/build.ts
+
+      # Prepare the artifact directory for GitHub Pages
+      # We need index.html, worker.js, and the built lib.js in the root
+      - name: Prepare Artifact Directory
+        run: |
+          mkdir ./gh-pages-dist
+          cp examples/mining/index.html ./gh-pages-dist/
+          cp examples/mining/worker.js ./gh-pages-dist/
+          # Check if the built library exists before copying
+          if [ -f "pkg-randomx.js/dist/web/index.js" ]; then
+            cp pkg-randomx.js/dist/web/index.js ./gh-pages-dist/lib.js
+          else
+            echo "Error: Built library pkg-randomx.js/dist/web/index.js not found!"
+            exit 1
+          fi
+          ls -R ./gh-pages-dist # List contents for debugging
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload the prepared directory
+          path: './gh-pages-dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
