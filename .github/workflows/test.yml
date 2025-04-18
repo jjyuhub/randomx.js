@@ -89,10 +89,12 @@ jobs:
 
       - name: Prepare docs directory
         run: |
-          mkdir -p docs
-          cp build/randomx.wasm docs/
-          cp build/randomx.js docs/
-          cp index.html docs/
+          mkdir -p docs/examples
+          cp examples/randomx.js docs/randomx.js
+          cp examples/randomx_single.js docs/examples/randomx_single.js
+          cp examples/randomx_threaded.js docs/examples/randomx_threaded.js
+          cp examples/superscalarhash.js docs/examples/superscalarhash.js
+          cp index.html docs/index.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
