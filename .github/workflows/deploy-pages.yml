@@ -4,15 +4,15 @@ name: Ubuntu Build, Test, and Deploy Pages
 
 on:
   push:
-    branches: [ main ] # Trigger on push to main branch
+    branches: [ main ]
   pull_request:
-    branches: [ main ] # Trigger on pull requests targeting main branch
-  workflow_dispatch:    # Allows manual triggering
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
-  contents: read # Needed to checkout the code
-  pages: write    # Needed to deploy to GitHub Pages
-  id-token: write # Needed for OIDC token for GitHub Pages deployment
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: "pages-${{ github.ref }}"
@@ -36,18 +36,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang lld cmake curl wget nodejs npm binaryen tcc
 
+          # Install WABT
           wget https://github.com/WebAssembly/wabt/releases/download/1.0.33/wabt-1.0.33-ubuntu.tar.gz
           tar -xzf wabt-1.0.33-ubuntu.tar.gz
           sudo cp wabt-1.0.33/bin/* /usr/local/bin/
 
+          # Install Bun
           curl -fsSL https://bun.sh/install | bash
           export BUN_INSTALL="$HOME/.bun"
           export PATH="$BUN_INSTALL/bin:$PATH"
           echo "$BUN_INSTALL/bin" >> $GITHUB_PATH
 
       - name: Patch Makefile to remove -mrelaxed-simd
-        run: |
-          sed -i 's/-mrelaxed-simd//g' Makefile
+        run: sed -i 's/-mrelaxed-simd//g' Makefile
 
       - name: Patch relaxed SIMD intrinsic in semifloat.c
         run: |
@@ -86,7 +87,7 @@ jobs:
 
       - name: Prepare Artifact Directory for Pages
         run: |
-          echo "Preparing GitHub Pages artifact (only runs on push to main)..."
+          echo "Preparing GitHub Pages artifact..."
           mkdir ./gh-pages-dist
           cp examples/mining/index.html ./gh-pages-dist/
           cp examples/mining/worker.js ./gh-pages-dist/
@@ -97,8 +98,6 @@ jobs:
             echo "Error: Built library pkg-randomx.js/dist/web/index.js not found! Cannot prepare artifact."
             exit 1
           fi
-          echo "Artifact contents:"
-          ls -R ./gh-pages-dist
 
       - name: Add security headers for SharedArrayBuffer
         run: |
@@ -107,6 +106,11 @@ jobs:
             Cross-Origin-Opener-Policy: same-origin
             Cross-Origin-Embedder-Policy: require-corp
           EOF
+
+      - name: Show Pages artifact contents before upload
+        run: |
+          echo "Artifact contents:"
+          ls -l ./gh-pages-dist
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
