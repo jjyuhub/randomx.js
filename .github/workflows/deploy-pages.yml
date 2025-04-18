@@ -1,11 +1,13 @@
+# .github/workflows/test.yml
+
 name: Ubuntu Build, Test, and Deploy Pages
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ] # Trigger on push to main branch
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ main ] # Trigger on pull requests targeting main branch
+  workflow_dispatch:    # Allows manual triggering
 
 # Sets permissions of the GITHUB_TOKEN
 permissions:
@@ -13,21 +15,23 @@ permissions:
   pages: write    # Needed to deploy to GitHub Pages
   id-token: write # Needed for OIDC token for GitHub Pages deployment
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# Do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment per branch/ref.
+# Skip runs queued between the run in-progress and latest queued.
+# Do NOT cancel in-progress runs for 'main' branch Pages deployments.
 concurrency:
-  group: "pages-${{ github.ref }}" # Use ref to allow concurrency for PRs vs main
-  cancel-in-progress: false # Set to false for Pages deployment safety, true might be ok if just testing PRs
+  group: "pages-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }} # Cancel PR builds if newer commit pushed, but not main branch deployments
 
 jobs:
-  build-test-deploy: # Renamed job for clarity
+  build-test-deploy:
     name: Build, Test & Deploy on Ubuntu
     runs-on: ubuntu-22.04
 
     # Define environment for Pages deployment step
+    # This is only relevant when the 'Deploy to GitHub Pages' step actually runs
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }} # Only set when deployment step runs
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout repository
@@ -45,9 +49,12 @@ jobs:
 
           # Install Bun
           curl -fsSL https://bun.sh/install | bash
+          # Add bun to PATH for subsequent steps
           export BUN_INSTALL="$HOME/.bun"
           export PATH="$BUN_INSTALL/bin:$PATH"
           echo "$BUN_INSTALL/bin" >> $GITHUB_PATH
+        # Note: BUN_INSTALL env var might not persist reliably between steps without export to GITHUB_ENV
+        # Adding to GITHUB_PATH is generally sufficient for finding the executable
 
       - name: Patch Makefile to remove -mrelaxed-simd
         run: |
@@ -58,14 +65,19 @@ jobs:
           sed -i 's/wasm_f64x2_relaxed_madd(wasm_f64x2_neg(c), b, a)/wasm_f64x2_add(wasm_f64x2_mul(a, b), wasm_f64x2_neg(c))/g' src/jit/stubs/semifloat.c
 
       - name: Install Node.js dependencies
-        run: bun i --verbose
+        # Ensure Bun is in PATH
+        run: $HOME/.bun/bin/bun i --verbose # Use explicit path or ensure GITHUB_PATH worked
 
       - name: Build project (patched)
         id: build # Give the build step an ID
+        # Ensure Bun is in PATH
         run: |
           echo "Starting build..."
-          bun scripts/build.ts
+          $HOME/.bun/bin/bun run build # Or: $HOME/.bun/bin/bun scripts/build.ts
           echo "Build complete."
+
+      # --- Test Steps ---
+      # These run on both push and pull_request events (if build succeeds)
 
       - name: Run RandomX example (Single Thread)
         run: node examples/randomx_single.js
@@ -73,12 +85,10 @@ jobs:
       - name: Patch randomx_threaded.js to stop after 10 intervals
         run: |
           echo "Limiting randomx_threaded.js to 10 hashrate prints..."
-
           # Insert clean, autoindented JS block after `let start_time = ...`
           sed -i '/let start_time = performance.now()/a\
                     let intervalCount = 0;\
                     const maxIntervals = 10;' examples/randomx_threaded.js
-
           # Add exit condition into interval block
           sed -i '/setInterval(() => {/a\
                     if (++intervalCount >= maxIntervals) process.exit(0);' examples/randomx_threaded.js
@@ -90,16 +100,18 @@ jobs:
         run: node examples/superscalarhash.js
 
       - name: Test Summary
-        run: echo "✅ Build and tests completed successfully with patched relaxed SIMD and controlled threaded output."
+        run: echo "✅ Build and tests completed successfully."
 
       # --- Deployment Steps ---
-      # These steps will only run on pushes to the 'main' branch
+      # These steps will only run IF:
+      # 1. The trigger was a 'push' event (NOT 'pull_request')
+      # 2. The push was to the 'main' branch (ref == 'refs/heads/main')
+      # 3. The 'build' step above completed successfully
 
       - name: Prepare Artifact Directory for Pages
-        # Only run on push to main branch after successful build
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         run: |
-          echo "Preparing GitHub Pages artifact..."
+          echo "Preparing GitHub Pages artifact (only runs on push to main)..."
           mkdir ./gh-pages-dist
           cp examples/mining/index.html ./gh-pages-dist/
           cp examples/mining/worker.js ./gh-pages-dist/
@@ -108,26 +120,25 @@ jobs:
             cp pkg-randomx.js/dist/web/index.js ./gh-pages-dist/lib.js
             echo "Copied index.html, worker.js, and lib.js"
           else
-            echo "Error: Built library pkg-randomx.js/dist/web/index.js not found!"
+            echo "Error: Built library pkg-randomx.js/dist/web/index.js not found! Cannot prepare artifact."
             exit 1
           fi
-          ls -R ./gh-pages-dist # List contents for debugging
+          echo "Artifact contents:"
+          ls -R ./gh-pages-dist
 
       - name: Setup Pages
-        # Only run on push to main branch
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         uses: actions/configure-pages@v5
+        # No configuration needed unless using custom domains, etc.
 
       - name: Upload artifact
-        # Only run on push to main branch
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './gh-pages-dist'
+          path: './gh-pages-dist' # Upload the prepared directory
 
       - name: Deploy to GitHub Pages
-        # Only run on push to main branch
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         id: deployment
         uses: actions/deploy-pages@v4
-        # Environment definition moved to job level
+        # The environment is set at the job level. No 'with' needed here.
