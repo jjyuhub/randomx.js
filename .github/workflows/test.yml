@@ -53,7 +53,7 @@ jobs:
 
       - name: Patch randomx_threaded.js to stop after 10 intervals
         run: |
-          echo "Limiting randomx_threaded.js to 10 hashrate prints..."
+          echo "Limiting randomx_threaded.js to 10 prints..."
           sed -i '/let start_time = performance.now()/a let intervalCount = 0;' examples/randomx_threaded.js
           sed -i '/let start_time = performance.now()/a const maxIntervals = 10;' examples/randomx_threaded.js
           sed -i '/setInterval(() => {/a if (++intervalCount >= maxIntervals) process.exit(0);' examples/randomx_threaded.js
@@ -65,7 +65,7 @@ jobs:
         run: node examples/superscalarhash.js
 
       - name: Test Summary
-        run: echo "✅ All tests completed successfully with patched relaxed SIMD and controlled threaded output."
+        run: echo "✅ All tests completed successfully."
 
   deploy-pages:
     name: Deploy to GitHub Pages
@@ -77,20 +77,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Bun
+      - name: Install Bun & esbuild
         run: |
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> $GITHUB_PATH
+          bun add --dev esbuild
 
       - name: Build WASM & JS
         run: |
           bun i --verbose
           bun scripts/build.ts
 
+      - name: Bundle for Browser
+        run: |
+          # Bundle your examples/randomx.js + embed any .wasm as data URL
+          bun x esbuild examples/randomx.js \
+            --bundle \
+            --platform=browser \
+            --loader:.wasm=dataurl \
+            --outfile=docs/randomx.js
+
       - name: Prepare docs directory
         run: |
-          mkdir -p docs/examples
-          cp -R examples/* docs/examples/
+          mkdir -p docs
           cp index.html docs/index.html
 
       - name: Deploy to GitHub Pages
