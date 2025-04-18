@@ -1,0 +1,76 @@
+name: macOS Build and Test
+
+on:
+  push: # Run on pushes to any branch
+    branches: [ main ]
+  pull_request: # Run on pull requests targeting the main branch
+    branches: [ main ]
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  test-macos:
+    name: Test on macOS
+    runs-on: macos-latest # Use the latest macOS runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4 # Checks out your repository code
+
+      - name: Install Homebrew dependencies
+        run: |
+          echo "Installing dependencies via Homebrew..."
+          brew install wabt binaryen tcc bun node
+          echo "Dependency installation complete."
+          echo "Verifying installations:"
+          brew list
+          which wasm-objdump # from wabt
+          which wasm-opt    # from binaryen
+          which tcc
+          which bun
+          which node
+
+      - name: Install Node.js dependencies
+        run: |
+          echo "Installing project Node.js dependencies using bun..."
+          bun i --verbose # Use bun install with verbose flag
+          echo "Node.js dependency installation complete."
+
+      - name: Build project
+        run: |
+          echo "Starting project build..."
+          bun scripts/build.ts # Run the build script
+          echo "Project build complete."
+          echo "Listing build artifacts (if any)..."
+          # Add commands here if you know specific output directories or files, e.g.:
+          # ls -l pkg-randomx.js/dist/
+
+      - name: Run RandomX example (Single Thread)
+        run: |
+          echo "Running RandomX single-threaded example..."
+          node examples/randomx_single.js
+          echo "RandomX single-threaded example finished."
+
+      - name: Run RandomX example (Multi Thread)
+        run: |
+          echo "Running RandomX multi-threaded example..."
+          node examples/randomx_threaded.js
+          echo "RandomX multi-threaded example finished."
+
+      # Note: randomx.js might be redundant if single/multi-threaded examples cover it
+      # - name: Run RandomX example (Main)
+      #   run: |
+      #     echo "Running main RandomX example..."
+      #     node examples/randomx.js
+      #     echo "Main RandomX example finished."
+
+      - name: Run SuperScalarHash example
+        run: |
+          echo "Running SuperScalarHash example..."
+          node examples/superscalarhash.js
+          echo "SuperScalarHash example finished."
+
+      # Add other tests or benchmarks if available, e.g., the web miner test could be more complex to automate in CI.
+
+      - name: Test summary
+        run: |
+          echo "All macOS tests completed successfully."
