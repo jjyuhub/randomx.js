@@ -109,7 +109,6 @@ jobs:
       # 3. The 'build' step above completed successfully
 
       - name: Prepare Artifact Directory for Pages
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         run: |
           echo "Preparing GitHub Pages artifact (only runs on push to main)..."
           mkdir ./gh-pages-dist
@@ -127,18 +126,15 @@ jobs:
           ls -R ./gh-pages-dist
 
       - name: Setup Pages
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         uses: actions/configure-pages@v5
         # No configuration needed unless using custom domains, etc.
 
       - name: Upload artifact
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: './gh-pages-dist' # Upload the prepared directory
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         id: deployment
         uses: actions/deploy-pages@v4
         # The environment is set at the job level. No 'with' needed here.
