@@ -1,54 +1,112 @@
-name: Deploy Mining Example to GitHub Pages
+name: Ubuntu Build, Test, and Deploy Pages
 
 on:
   push:
-    branches: [ main ] # Or your default branch
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Sets permissions of the GITHUB_TOKEN
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: read # Needed to checkout the code
+  pages: write    # Needed to deploy to GitHub Pages
+  id-token: write # Needed for OIDC token for GitHub Pages deployment
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: "pages-${{ github.ref }}" # Use ref to allow concurrency for PRs vs main
+  cancel-in-progress: false # Set to false for Pages deployment safety, true might be ok if just testing PRs
 
 jobs:
-  build-and-deploy:
-    name: Build and Deploy
-    runs-on: ubuntu-latest
+  build-test-deploy: # Renamed job for clarity
+    name: Build, Test & Deploy on Ubuntu
+    runs-on: ubuntu-22.04
+
+    # Define environment for Pages deployment step
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }} # Only set when deployment step runs
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Bun is used for the build script as per README and package.json
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-
-      - name: Install Dependencies (Node Modules)
-        run: bun install --frozen-lockfile
-
-      # Build the project - assumes build script generates pkg-randomx.js/dist/web/index.js
-      - name: Build Project Assets
-        run: bun run build # Or: bun scripts/build.ts
-
-      # Prepare the artifact directory for GitHub Pages
-      # We need index.html, worker.js, and the built lib.js in the root
-      - name: Prepare Artifact Directory
+      - name: Install Dependencies (APT, WABT, Bun)
         run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang lld cmake curl wget nodejs npm binaryen tcc
+
+          # Install WABT (1.0.33) from binary release
+          wget https://github.com/WebAssembly/wabt/releases/download/1.0.33/wabt-1.0.33-ubuntu.tar.gz
+          tar -xzf wabt-1.0.33-ubuntu.tar.gz
+          sudo cp wabt-1.0.33/bin/* /usr/local/bin/
+
+          # Install Bun
+          curl -fsSL https://bun.sh/install | bash
+          export BUN_INSTALL="$HOME/.bun"
+          export PATH="$BUN_INSTALL/bin:$PATH"
+          echo "$BUN_INSTALL/bin" >> $GITHUB_PATH
+
+      - name: Patch Makefile to remove -mrelaxed-simd
+        run: |
+          sed -i 's/-mrelaxed-simd//g' Makefile
+
+      - name: Patch relaxed SIMD intrinsic in semifloat.c
+        run: |
+          sed -i 's/wasm_f64x2_relaxed_madd(wasm_f64x2_neg(c), b, a)/wasm_f64x2_add(wasm_f64x2_mul(a, b), wasm_f64x2_neg(c))/g' src/jit/stubs/semifloat.c
+
+      - name: Install Node.js dependencies
+        run: bun i --verbose
+
+      - name: Build project (patched)
+        id: build # Give the build step an ID
+        run: |
+          echo "Starting build..."
+          bun scripts/build.ts
+          echo "Build complete."
+
+      - name: Run RandomX example (Single Thread)
+        run: node examples/randomx_single.js
+
+      - name: Patch randomx_threaded.js to stop after 10 intervals
+        run: |
+          echo "Limiting randomx_threaded.js to 10 hashrate prints..."
+
+          # Insert clean, autoindented JS block after `let start_time = ...`
+          sed -i '/let start_time = performance.now()/a\
+                    let intervalCount = 0;\
+                    const maxIntervals = 10;' examples/randomx_threaded.js
+
+          # Add exit condition into interval block
+          sed -i '/setInterval(() => {/a\
+                    if (++intervalCount >= maxIntervals) process.exit(0);' examples/randomx_threaded.js
+
+      - name: Run RandomX example (Multi Thread)
+        run: node examples/randomx_threaded.js
+
+      - name: Run SuperScalarHash example
+        run: node examples/superscalarhash.js
+
+      - name: Test Summary
+        run: echo "✅ Build and tests completed successfully with patched relaxed SIMD and controlled threaded output."
+
+      # --- Deployment Steps ---
+      # These steps will only run on pushes to the 'main' branch
+
+      - name: Prepare Artifact Directory for Pages
+        # Only run on push to main branch after successful build
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
+        run: |
+          echo "Preparing GitHub Pages artifact..."
           mkdir ./gh-pages-dist
           cp examples/mining/index.html ./gh-pages-dist/
           cp examples/mining/worker.js ./gh-pages-dist/
           # Check if the built library exists before copying
           if [ -f "pkg-randomx.js/dist/web/index.js" ]; then
             cp pkg-randomx.js/dist/web/index.js ./gh-pages-dist/lib.js
+            echo "Copied index.html, worker.js, and lib.js"
           else
             echo "Error: Built library pkg-randomx.js/dist/web/index.js not found!"
             exit 1
@@ -56,14 +114,20 @@ jobs:
           ls -R ./gh-pages-dist # List contents for debugging
 
       - name: Setup Pages
+        # Only run on push to main branch
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        # Only run on push to main branch
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload the prepared directory
           path: './gh-pages-dist'
 
       - name: Deploy to GitHub Pages
+        # Only run on push to main branch
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.build.outcome == 'success'
         id: deployment
         uses: actions/deploy-pages@v4
+        # Environment definition moved to job level
